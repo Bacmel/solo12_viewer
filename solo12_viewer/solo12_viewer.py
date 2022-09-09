@@ -23,7 +23,7 @@ from pinocchio.utils import *
 from pinocchio.robot_wrapper import RobotWrapper
 
 # ODRI
-# import libodri_control_interface_pywrap as oci
+import libodri_control_interface_pywrap as oci
 
 
 # ##CONSTANTS =========================================================
@@ -121,31 +121,34 @@ class Solo12Viewer(Node):
     def setup(self):
         # Creation of the 2 entities
         self.pin_robot = RobotWrapper.BuildFromURDF(urdf)
-        # self.odri_robot = oci.robot_from_yaml_file(yaml)
+        self.odri_robot = oci.robot_from_yaml_file(yaml)
         
         # Initialization
         nq = self.pin_robot.model.nq
         q = zero(nq)
 
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
-        # self.odri_robot.initialize(q)
+        self.odri_robot.initialize(q)
+        q = self.odri_robot.joints.positions
+        self.odri_robot.joints.set_position_offsets(-q)
 
     def loop(self):
         # Collecting datas
-        # self.odri_robot.parse_sensor_data()
+        self.odri_robot.parse_sensor_data()
 
-        # imu_attitude = self.odri_robot.imu.attitude_euler
-        # positions = self.odri_robot.joints.positions
-        # velocities = self.odri_robot.joints.velocities
+        imu_attitude = self.odri_robot.imu.attitude_euler
+        positions = self.odri_robot.joints.positions
+        velocities = self.odri_robot.joints.velocities
 
         nq = self.pin_robot.model.nq
         bound = np.full((nq, 1), np.pi)
-        q = pin.randomConfiguration(self.pin_robot.model, -bound, bound)
+        q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
 
         # Send data
         # self.update_joint()
         self.update_frame()
+        print(q)
 
 
 # ## MAIN ================================================================
