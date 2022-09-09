@@ -10,10 +10,12 @@
 # ROS messages
 from std_msgs.msg import Header
 from sensor_msgs.msg import JointState
+from geometry_msgs.msg import TransformStamped
 
 # ROS
 import rclpy
 from rclpy.node import Node
+from tf2_ros import TransformBroadcaster
 
 # Pinocchio
 import pinocchio as pin
@@ -67,9 +69,10 @@ class Solo12Viewer(Node):
         """Initialize the ROS broadcaster."""
         # Data from pinocchio
         self.pub_state = self.create_publisher(JointState, 'joint_states', 1) 
-        
-    def update_rviz(self):
-        """Update RVIZ regarding Pinocchio"""
+        self.br_state = TransformBroadcaster(self)
+
+    def update_joint(self):
+        """Update joints regarding Pinocchio"""
         msg_joint_state = JointState()
         msg_joint_state.header = Header()
         msg_joint_state.header.stamp = self.get_clock().now().to_msg()
@@ -82,28 +85,58 @@ class Solo12Viewer(Node):
                 msg_joint_state.effort.append(0)
         self.pub_state.publish(msg_joint_state)
 
+    def update_frame(self):
+        """Update frames regarding Pinocchio."""
+        for frame in self.pin_robot.model.frames:
+            t = TransformStamped()
+            
+            # Separate joint frame and body frame
+            if frame.type == pin.JOINT:
+                parent_frame_id = 'universe'
+                M_p_c = self.pin_robot.data.oMi[frame.parent]
+            else:
+                parent_frame_id = self.pin_robot.model.names[frame.parent]
+                M_p_c = frame.placement
+            if parent_frame_id == frame.name:
+                parent_frame_id = 'map'
+            t.header.stamp = self.get_clock().now().to_msg()
+            t.header.frame_id = parent_frame_id
+            t.child_frame_id = frame.name
+            
+            x, y, z, q_x, q_y, q_z, q_w = pin.SE3ToXYZQUAT(M_p_c)
+
+            t.transform.translation.x = x
+            t.transform.translation.y = y
+            t.transform.translation.z = z
+            t.transform.rotation.x = q_x
+            t.transform.rotation.y = q_y
+            t.transform.rotation.z = q_z
+            t.transform.rotation.w = q_w
+
+            self.br_state.sendTransform(t)
+
 
    # Customs functions -------------------------------------------------
 
     def setup(self):
         # Creation of the 2 entities
         self.pin_robot = RobotWrapper.BuildFromURDF(urdf)
-        #self.odri_robot = oci.robot_from_yaml_file(yaml)
+        # self.odri_robot = oci.robot_from_yaml_file(yaml)
         
         # Initialization
         nq = self.pin_robot.model.nq
         q = zero(nq)
 
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
-        #self.odri_robot.initialize(q)
+        # self.odri_robot.initialize(q)
 
     def loop(self):
         # Collecting datas
-        # odri_robot.parse_sensor_data()
+        # self.odri_robot.parse_sensor_data()
 
-        # imu_attitude = odri_robot.imu.attitude_euler
-        # positions = odri_robot.joints.positions
-        # velocities = odri_robot.joints.velocities
+        # imu_attitude = self.odri_robot.imu.attitude_euler
+        # positions = self.odri_robot.joints.positions
+        # velocities = self.odri_robot.joints.velocities
 
         nq = self.pin_robot.model.nq
         bound = np.full((nq, 1), np.pi)
@@ -111,7 +144,8 @@ class Solo12Viewer(Node):
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
 
         # Send data
-        self.update_rviz()
+        # self.update_joint()
+        self.update_frame()
 
 
 # ## MAIN ================================================================
