@@ -5,6 +5,9 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, Command
 
+from ament_index_python.packages import get_package_share_directory
+import os.path
+
 default_urdf_path = '/opt/openrobots/share/example-robot-data/robots/solo_description/robots/solo12.urdf'
 
 def generate_launch_description():
@@ -21,7 +24,8 @@ def generate_launch_description():
 
     rviz_node                  = Node(package='rviz2',
                                       executable='rviz2',
-                                      output='both')
+                                      output='both',
+                                      arguments=['-d' + os.path.join(get_package_share_directory('solo12_viewer'), 'config', 'config.rviz')])
     
     custom_node                = Node(package='solo12_viewer',
                                       executable='solo12_viewer',
