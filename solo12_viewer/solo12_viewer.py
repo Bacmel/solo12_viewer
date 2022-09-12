@@ -12,6 +12,10 @@ from std_msgs.msg import Header
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TransformStamped
 
+# Custom ROS messages
+from odri_ros2_msgs.msg import RobotState
+from odri_ros2_msgs.msg import MotorState
+
 # ROS
 import rclpy
 from rclpy.node import Node
@@ -24,6 +28,8 @@ from pinocchio.robot_wrapper import RobotWrapper
 
 # ODRI
 import libodri_control_interface_pywrap as oci
+
+
 
 
 # ##CONSTANTS =========================================================
@@ -68,7 +74,8 @@ class Solo12Viewer(Node):
     def _init_publisher(self):
         """Initialize the ROS broadcaster."""
         # Data from pinocchio
-        self.pub_state = self.create_publisher(JointState, 'joint_states', 1) 
+        self.pub_state = self.create_publisher(JointState, 'joint_states', 1)
+        self.pub_odri = self.create_publisher(RobotState, 'solo12_states', 1)
         self.br_state = TransformBroadcaster(self)
 
     def update_joint(self):
@@ -115,6 +122,23 @@ class Solo12Viewer(Node):
 
             self.br_state.sendTransform(t)
 
+    def publish_odri_state(self):
+        """Publish odri state."""
+        msg_robot_state = RobotState()
+        positions = self.odri_robot.joints.positions.copy()
+        velocities = self.odri_robot.joints.velocities.copy()
+        torques = self.odri_robot.joints.torques.copy()
+
+        msg_robot_state.header.stamp = self.get_clock().now().to_msg()
+        for _, i in enumarate(positions):
+            motor_state = MotorState()
+            motor_state.position = positions[i]
+            motor_state.velocities = velocities[i]
+            motor_state.torques = torques[i]
+
+            msg_robot_state.motor_states.append(motor_state.copy())
+        self.pub_odri.publish(msg_robot_state)
+
 
    # Customs functions -------------------------------------------------
 
@@ -148,7 +172,7 @@ class Solo12Viewer(Node):
         # Send data
         # self.update_joint()
         self.update_frame()
-        print(q)
+        self.publish_odri_state()
 
 
 # ## MAIN ================================================================
