@@ -29,7 +29,8 @@ from pinocchio.robot_wrapper import RobotWrapper
 # ODRI
 import libodri_control_interface_pywrap as oci
 
-
+# Crocoddyl
+import crocoddyl
 
 
 # ##CONSTANTS =========================================================
@@ -37,8 +38,13 @@ import libodri_control_interface_pywrap as oci
 urdf = '/opt/openrobots/share/example-robot-data/robots/solo_description/robots/solo12.urdf'
 yaml = '/home/aschroeter/devel/odri_control_interface/demos/config_solo12.yaml'
 
+# Goal frame
+frame_name = ''
+frame_goal = pin.SE3(np.eye(3), np.array([.0, .0, .4]))
+
 # Physical constants
-dt = 0.001 # in [s]
+dt = 1e-3 # in [s]
+T = 250 # knots
 
 # ##CLASS ============================================================
 
@@ -105,7 +111,7 @@ class Solo12Viewer(Node):
                 parent_frame_id = self.pin_robot.model.names[frame.parent]
                 M_p_c = frame.placement
             if parent_frame_id == frame.name:
-                parent_frame_id = 'map'
+                parent_frame_id = 'world'
             t.header.stamp = self.get_clock().now().to_msg()
             t.header.frame_id = parent_frame_id
             t.child_frame_id = frame.name
@@ -141,6 +147,39 @@ class Solo12Viewer(Node):
 
 
    # Customs functions -------------------------------------------------
+    
+    def crocoddyl_setup(self):
+        # Creation state
+        state = crocoddyl.StateMultibody(pin_robot.model)
+
+        # Creation Cost
+        runningCM  = crocoddyl.CostModelSum(state)
+        terminalCM = crocoddyl.CostModelSum(state)
+
+        ## Command Cost
+        uRes = crocoddyl.ResidualModelControl(state)
+        uCost = crocoddyl.CostModelResidual(state, uRes)
+        runningCM.addCost('uReg', uCost, 1e-4)
+        
+        ## State Cost
+        xRes = crocoddyl.ResidualModelControl(state)
+        xCost = crocoddyl.CostModelResidual(state, xRes)
+        runningCM.addCost('xReg', xCost, 1e-4)
+        
+        ## Goal Cost
+        frameid = pin_robot.model.getFrameId(frame_name)
+        frameRes = crocoddyl.ResidualModelFramePlacement(state, frameid, frame_goal)
+        goalCost = crocoddyl.CostModelResidual(state, frameRes)
+        runningCM.addCost(frame_name, goalCost, 1)
+        terminalCM.addCost(frame_name, goalCost, 1)
+
+        # Creation Action Model
+        actuationM = crocoddyl.ActuationModelFull(state)
+        self.runningM = crocoddyl.IntegratedActionModelEuler(crocoddyl.DifferentialActionModelFreeFwdDynamics(state, actuationM, runningCM), dt)
+        self.runningM.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.])
+        
+        self.terminalM = crocoddyl.IntegratedActionModelEuler(crocoddyl.DifferentialActionModelFreeFwdDynamics(state, actuationM, terminalCM), 0.)
+        self.terminalM.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.])
 
     def setup(self):
         # Creation of the 2 entities
@@ -148,15 +187,33 @@ class Solo12Viewer(Node):
         self.odri_robot = oci.robot_from_yaml_file(yaml)
         
         # Initialization
-        nq = self.pin_robot.model.nq
-        q = zero(nq)
-
+        self.nq = self.pin_robot.model.nq
+        q0 = zero(self.nq)
+        nv = self.pin_robot.model.nv
+        v0 = zero(nv)
+        x0 = np.concatenate([q0, v0])
+        
+        ## Pinocchio
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
+
+        ## ODRI
         self.odri_robot.initialize(q)
         q = self.odri_robot.joints.positions
         self.odri_robot.joints.set_position_offsets(-q)
 
+        ## Crocoddyl
+        self.crocoddyl_setup()
+        problem = crocoddyl.ShootingProblem(x0, [self.runningM]*T, terminalM)
+        self.solver = crocoddyl.SolverDDP(problem)
+        self.solver.solve()
+        self.t = 0
+        
     def loop(self):
+        # Get new configuration
+        x_t = self.solver.xs[t]
+        q = x_t[:self.nq]
+        v = x_t[self.nq:]
+
         # Collecting datas
         self.odri_robot.parse_sensor_data()
 
@@ -168,6 +225,9 @@ class Solo12Viewer(Node):
         bound = np.full((nq, 1), np.pi)
         q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
+
+        if self.t < len(self.solver.xs):
+            t = t+1
 
         # Send data
         # self.update_joint()
