@@ -13,8 +13,8 @@ from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TransformStamped
 
 # Custom ROS messages
-from odri_ros2_msgs.msg import RobotState
-from odri_ros2_msgs.msg import MotorState
+from odri_msgs.msg import RobotState
+from odri_msgs.msg import MotorState
 
 # ROS
 import rclpy
@@ -39,12 +39,12 @@ urdf = '/opt/openrobots/share/example-robot-data/robots/solo_description/robots/
 yaml = '/home/aschroeter/devel/odri_control_interface/demos/config_solo12.yaml'
 
 # Goal frame
-frame_name = ''
-frame_goal = pin.SE3(np.eye(3), np.array([.0, .0, .4]))
+frame_name = 'base_link'
+frame_goal = pin.SE3(np.eye(3), np.array([.1, .0, 0]))
 
 # Physical constants
 dt = 1e-3 # in [s]
-T = 250 # knots
+T = 1000 # knots
 
 # ##CLASS ============================================================
 
@@ -111,7 +111,7 @@ class Solo12Viewer(Node):
                 parent_frame_id = self.pin_robot.model.names[frame.parent]
                 M_p_c = frame.placement
             if parent_frame_id == frame.name:
-                parent_frame_id = 'world'
+                parent_frame_id = 'map'
             t.header.stamp = self.get_clock().now().to_msg()
             t.header.frame_id = parent_frame_id
             t.child_frame_id = frame.name
@@ -133,16 +133,16 @@ class Solo12Viewer(Node):
         msg_robot_state = RobotState()
         positions = self.odri_robot.joints.positions.copy()
         velocities = self.odri_robot.joints.velocities.copy()
-        torques = self.odri_robot.joints.torques.copy()
+        torques = self.odri_robot.joints.measured_torques.copy()
 
         msg_robot_state.header.stamp = self.get_clock().now().to_msg()
-        for _, i in enumarate(positions):
+        for i, _ in enumerate(positions):
             motor_state = MotorState()
             motor_state.position = positions[i]
-            motor_state.velocities = velocities[i]
-            motor_state.torques = torques[i]
+            motor_state.velocity = velocities[i]
+            motor_state.current = torques[i]
 
-            msg_robot_state.motor_states.append(motor_state.copy())
+            msg_robot_state.motor_states.append(motor_state)
         self.pub_odri.publish(msg_robot_state)
 
 
@@ -150,7 +150,7 @@ class Solo12Viewer(Node):
     
     def crocoddyl_setup(self):
         # Creation state
-        state = crocoddyl.StateMultibody(pin_robot.model)
+        state = crocoddyl.StateMultibody(self.pin_robot.model)
 
         # Creation Cost
         runningCM  = crocoddyl.CostModelSum(state)
@@ -166,8 +166,10 @@ class Solo12Viewer(Node):
         xCost = crocoddyl.CostModelResidual(state, xRes)
         runningCM.addCost('xReg', xCost, 1e-4)
         
+        
+        
         ## Goal Cost
-        frameid = pin_robot.model.getFrameId(frame_name)
+        frameid = self.pin_robot.model.getFrameId(frame_name)
         frameRes = crocoddyl.ResidualModelFramePlacement(state, frameid, frame_goal)
         goalCost = crocoddyl.CostModelResidual(state, frameRes)
         runningCM.addCost(frame_name, goalCost, 1)
@@ -176,10 +178,10 @@ class Solo12Viewer(Node):
         # Creation Action Model
         actuationM = crocoddyl.ActuationModelFull(state)
         self.runningM = crocoddyl.IntegratedActionModelEuler(crocoddyl.DifferentialActionModelFreeFwdDynamics(state, actuationM, runningCM), dt)
-        self.runningM.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.])
+        self.runningM.differential.armature = np.full((self.nq, 1), 0.1)
         
         self.terminalM = crocoddyl.IntegratedActionModelEuler(crocoddyl.DifferentialActionModelFreeFwdDynamics(state, actuationM, terminalCM), 0.)
-        self.terminalM.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.])
+        self.terminalM.differential.armature = np.full((self.nq, 1), 0.1)
 
     def setup(self):
         # Creation of the 2 entities
@@ -194,23 +196,23 @@ class Solo12Viewer(Node):
         x0 = np.concatenate([q0, v0])
         
         ## Pinocchio
-        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
+        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q0)
 
         ## ODRI
-        self.odri_robot.initialize(q)
+        self.odri_robot.initialize(q0)
         q = self.odri_robot.joints.positions
         self.odri_robot.joints.set_position_offsets(-q)
 
         ## Crocoddyl
         self.crocoddyl_setup()
-        problem = crocoddyl.ShootingProblem(x0, [self.runningM]*T, terminalM)
+        problem = crocoddyl.ShootingProblem(x0, [self.runningM]*T, self.terminalM)
         self.solver = crocoddyl.SolverDDP(problem)
         self.solver.solve()
         self.t = 0
         
     def loop(self):
         # Get new configuration
-        x_t = self.solver.xs[t]
+        x_t = self.solver.xs[self.t]
         q = x_t[:self.nq]
         v = x_t[self.nq:]
 
@@ -221,13 +223,13 @@ class Solo12Viewer(Node):
         positions = self.odri_robot.joints.positions
         velocities = self.odri_robot.joints.velocities
 
-        nq = self.pin_robot.model.nq
-        bound = np.full((nq, 1), np.pi)
-        q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
+        #nq = self.pin_robot.model.nq
+        #bound = np.full((nq, 1), np.pi)
+        #q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
 
-        if self.t < len(self.solver.xs):
-            t = t+1
+        if self.t < len(self.solver.xs)-1:
+            self.t = self.t+1
 
         # Send data
         # self.update_joint()
