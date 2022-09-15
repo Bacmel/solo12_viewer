@@ -20,6 +20,8 @@ from odri_msgs.msg import MotorState
 import rclpy
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
+from tf2_ros import TransformListener 
+from tf2_ros import Buffer
 
 # Pinocchio
 import pinocchio as pin
@@ -55,8 +57,10 @@ class Solo12Viewer(Node):
     def __init__(self):
         """Initialize the ROS node."""
         super().__init__('solo12_viewer')
-        # Creation of the ROS publisher
+        # Creation of the ROS publishers
         self._init_publisher()
+        # Creation of the ROS subscribers()
+        self._init_subscriber()
         # Creation of the ROS timer
         self.timer = self.create_timer(dt, self.loop)
         # Initialization for Aurel
@@ -83,6 +87,12 @@ class Solo12Viewer(Node):
         self.pub_state = self.create_publisher(JointState, 'joint_states', 1)
         self.pub_odri = self.create_publisher(RobotState, 'solo12_states', 1)
         self.br_state = TransformBroadcaster(self)
+
+    def _init_publisher(self):
+        """Initialize the ROS Listener"""
+        self.tf_buffer = Buffer()
+        self.li_state = TransformListener(self.tf_buffer, self)
+
 
     def update_joint(self):
         """Update joints regarding Pinocchio"""
@@ -144,7 +154,30 @@ class Solo12Viewer(Node):
 
             msg_robot_state.motor_states.append(motor_state)
         self.pub_odri.publish(msg_robot_state)
+    
+    def get_M_w_f(self, frame_name):
+        trans = None
 
+        try:
+            now = rclpy.time.Time()
+            t = self.tf_buffer.lookup_transform(
+                  'world_flu',
+                  frame_name,
+                  now)
+        except TransformException as ex:
+            self.get_logger().info(
+                 f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+        
+        x   = t.transform.translation.x
+        y   = t.transform.translation.y
+        z   = t.transform.translation.z
+        q_x = t.transform.rotation.x
+        q_y = t.transform.rotation.y
+        q_z = t.transform.rotation.z
+        q_w = t.transform.rotation.w
+
+        M_w_f = pin.XYZToQUAT(x, y, z, q_x, q_y, q_z, q_w)
+        return M_w_f
 
    # Customs functions -------------------------------------------------
     
