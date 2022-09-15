@@ -111,7 +111,7 @@ class Solo12Viewer(Node):
                 parent_frame_id = self.pin_robot.model.names[frame.parent]
                 M_p_c = frame.placement
             if parent_frame_id == frame.name:
-                parent_frame_id = 'map'
+                pass
             t.header.stamp = self.get_clock().now().to_msg()
             t.header.frame_id = parent_frame_id
             t.child_frame_id = frame.name
@@ -230,17 +230,17 @@ class Solo12Viewer(Node):
         self.odri_robot.joints.set_position_offsets(-q)
 
         ## Crocoddyl
-        self.crocoddyl_setup()
-        problem = crocoddyl.ShootingProblem(x0, [self.runningM]*T, self.terminalM)
-        self.solver = crocoddyl.SolverDDP(problem)
-        self.solver.solve()
-        self.t = 0
+        #self.crocoddyl_setup()
+        #problem = crocoddyl.ShootingProblem(x0, [self.runningM]*T, self.terminalM)
+        #self.solver = crocoddyl.SolverDDP(problem)
+        #self.solver.solve()
+        #self.t = 0
         
     def loop(self):
         # Get new configuration
-        x_t = self.solver.xs[self.t]
-        q = x_t[:self.nq]
-        v = x_t[self.nq:]
+        #x_t = self.solver.xs[self.t]
+        #q = x_t[:self.nq]
+        #v = x_t[self.nq:]
 
         # Collecting datas
         self.odri_robot.parse_sensor_data()
@@ -251,11 +251,11 @@ class Solo12Viewer(Node):
 
         #nq = self.pin_robot.model.nq
         #bound = np.full((nq, 1), np.pi)
-        #q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
+        q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
 
-        if self.t < len(self.solver.xs)-1:
-            self.t = self.t+1
+        #if self.t < len(self.solver.xs)-1:
+        #    self.t = self.t+1
 
         # Send data
         # self.update_joint()

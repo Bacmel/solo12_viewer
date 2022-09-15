@@ -6,7 +6,9 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, Command
 
 from ament_index_python.packages import get_package_share_directory
+
 import os.path
+import numpy as np
 
 default_urdf_path = '/opt/openrobots/share/example-robot-data/robots/solo_description/robots/solo12.urdf'
 
@@ -31,6 +33,25 @@ def generate_launch_description():
                                       executable='solo12_viewer',
                                       output='both')
 
+    vrpn_client_node           = Node(package='vrpn_client_ros',
+                                      executable='vrpn_client_node',
+                                      output='both',
+                                      emulate_tty=True,
+                                      parameters=[{'server': '192.168.1.2', 'port': 3883, 'frame_id': 'world_fur', 'broadcast_tf': True, 'refresh_tracker_frequency': 0.2, 'update_frequency': 100.0}])
+
+    st_w_wo                    = Node(package='tf2_ros',
+                                      executable='static_transform_publisher',
+                                      arguments=['0', '0', '0', '0', '0', str(np.pi/2), 'world_flu', 'world_fur'])
+
+    st_solo12_fur_flu          = Node(package='tf2_ros',
+                                      executable='static_transform_publisher',
+                                      arguments=['0', '0', '0', '0', '0', str(-np.pi/2), 'solo12_fur_ot', 'solo12_flu_ot'])
+
+    st_solo12_universe         = Node(package='tf2_ros',
+                                      executable='static_transform_publisher',
+                                      arguments=['0', '0', '0', '0', '0', '0', 'solo12_flu_ot', 'universe'])
+
+
 
     ld = LaunchDescription()
 
@@ -38,5 +59,10 @@ def generate_launch_description():
     ld.add_action(robot_state_publisher_node)
     ld.add_action(rviz_node)
     ld.add_action(custom_node)
+    ld.add_action(vrpn_client_node)
+
+    ld.add_action(st_w_wo)
+    ld.add_action(st_solo12_fur_flu)
+    ld.add_action(st_solo12_universe)
 
     return ld
