@@ -88,7 +88,7 @@ class Solo12Viewer(Node):
         self.pub_odri = self.create_publisher(RobotState, 'solo12_states', 1)
         self.br_state = TransformBroadcaster(self)
 
-    def _init_publisher(self):
+    def _init_subscriber(self):
         """Initialize the ROS Listener"""
         self.tf_buffer = Buffer()
         self.li_state = TransformListener(self.tf_buffer, self)
@@ -157,17 +157,17 @@ class Solo12Viewer(Node):
     
     def get_M_w_f(self, frame_name):
         trans = None
-
-        try:
-            now = rclpy.time.Time()
-            t = self.tf_buffer.lookup_transform(
-                  'world_flu',
-                  frame_name,
-                  now)
-        except TransformException as ex:
-            self.get_logger().info(
-                 f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
-        
+        succeed = False
+        while not succeed:
+            try:
+                now = rclpy.time.Time()
+                t = self.tf_buffer.lookup_transform(
+                'world_flu',
+                frame_name,
+                now)
+                succeed = True
+            except:
+                succeed = False
         x   = t.transform.translation.x
         y   = t.transform.translation.y
         z   = t.transform.translation.z
@@ -200,27 +200,29 @@ class Solo12Viewer(Node):
         runningCM.addCost('xReg', xCost, 1e-4)
         
         
+        M_world_base_link = self.get_M_w_f('FL_FOOT')
+        
         #
         frameid = self.pin_robot.model.getFrameId('FL_FOOT')
-        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, np.array([0.1946, 0.14695, -0.2]))
+        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, M_world_base_link*np.array([0.1946, 0.14695, -0.2, 1]))
         goalCost = crocoddyl.CostModelResidual(state, frameRes)
         runningCM.addCost('FL_FOOT', goalCost, 1)
         terminalCM.addCost('FL_FOOT', goalCost, 1)
         
         frameid = self.pin_robot.model.getFrameId('FR_FOOT')
-        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, np.array([0.1946, -0.14695, -0.3]))
+        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, M_world_base_link*np.array([0.1946, -0.14695, -0.2, 1]))
         goalCost = crocoddyl.CostModelResidual(state, frameRes)
         runningCM.addCost('FR_FOOT', goalCost, 1)
         terminalCM.addCost('FR_FOOT', goalCost, 1)
 
         frameid = self.pin_robot.model.getFrameId('HL_FOOT')
-        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, np.array([-0.1946, 0.14695, -0.2]))
+        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, M_world_base_link*np.array([-0.1946, 0.14695, -0.2, 1]))
         goalCost = crocoddyl.CostModelResidual(state, frameRes)
         runningCM.addCost('HL_FOOT', goalCost, 1)
         terminalCM.addCost('HL_FOOT', goalCost, 1)
 
         frameid = self.pin_robot.model.getFrameId('HR_FOOT')
-        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, np.array([-0.1946, -0.14695, -0.2]))
+        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, M_world_base_link*np.array([-0.1946, -0.14695, -0.2, 1]))
         goalCost = crocoddyl.CostModelResidual(state, frameRes)
         runningCM.addCost('HR_FOOT', goalCost, 1)
         terminalCM.addCost('HR_FOOT', goalCost, 1)
@@ -256,24 +258,25 @@ class Solo12Viewer(Node):
         
         ## Pinocchio
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q0)
-
+        self.update_frame()
+        
         ## ODRI
         self.odri_robot.initialize(q0)
         q = self.odri_robot.joints.positions
         self.odri_robot.joints.set_position_offsets(-q)
-
+	
         ## Crocoddyl
-        #self.crocoddyl_setup()
-        #problem = crocoddyl.ShootingProblem(x0, [self.runningM]*T, self.terminalM)
-        #self.solver = crocoddyl.SolverDDP(problem)
-        #self.solver.solve()
-        #self.t = 0
+        self.crocoddyl_setup()
+        problem = crocoddyl.ShootingProblem(x0, [self.runningM]*T, self.terminalM)
+        self.solver = crocoddyl.SolverDDP(problem)
+        self.solver.solve()
+        self.t = 0
         
     def loop(self):
         # Get new configuration
-        #x_t = self.solver.xs[self.t]
-        #q = x_t[:self.nq]
-        #v = x_t[self.nq:]
+        x_t = self.solver.xs[self.t]
+        q = x_t[:self.nq]
+        v = x_t[self.nq:]
 
         # Collecting datas
         self.odri_robot.parse_sensor_data()

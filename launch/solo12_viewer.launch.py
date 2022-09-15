@@ -57,7 +57,7 @@ def generate_launch_description():
 
     ld.add_action(urdf_path_arg)
     ld.add_action(robot_state_publisher_node)
-    ld.add_action(rviz_node)
+    #ld.add_action(rviz_node)
     ld.add_action(custom_node)
     ld.add_action(vrpn_client_node)
 
