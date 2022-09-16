@@ -2,6 +2,7 @@ import crocoddyl as croco
 import example_robot_data
 import numpy as np
 import pinocchio as pin
+from pinocchio.utils import *
 
 ## LISTS OF DATA
 feet_name_list = ['FL_FOOT', 'FR_FOOT', 'HL_FOOT', 'HR_FOOT']
@@ -16,6 +17,7 @@ nq = robot.nq
 q0 = robot.q0
 nv = robot.nv
 v0 = robot.v0
+x0 = np.concatenate([q0, v0])
 pin.framesForwardKinematics(robot.model, robot.data, q0)
 
 ## Physical constants
@@ -36,11 +38,14 @@ u_res = croco.ResidualModelControl(state)
 u_cost = croco.CostModelResidual(state, u_res)
 running_cost_model.addCost('uReg', u_cost, 1e-4)
         
-## State Regulation Cost
-x_res = croco.ResidualModelControl(state)
+## State Regulation Cost 
+x_res = croco.ResidualModelState(state, x0)
 x_cost = croco.CostModelResidual(state, x_res)
-running_cost_model.addCost('xReg', x_cost, 1e-4)
-              
+running_cost_model.addCost('xReg', x_cost, 1e-3)
+
+## 
+
+     
 ## Feet Goal Cost
 # for idx, foot_name in enumerate(feet_name_list) :
 #    foot_id = robot.model.getFrameId(foot_name)
@@ -51,7 +56,7 @@ running_cost_model.addCost('xReg', x_cost, 1e-4)
 #    terminal_cost_model.addCost(foot_name, foot_goal_cost, 1)      
         
 ## Base Link Goal Cost
-frame_goal = pin.SE3(np.eye(3), np.array([.05, .0, -0.1]))
+frame_goal = pin.SE3(rpyToMatrix(np.array([0, 0, np.deg2rad(20)])), np.array([.0, .0, 0.2]))
 base_link_id  = robot.model.getFrameId('base_link')
 base_link_res = croco.ResidualModelFramePlacement(state, base_link_id, frame_goal)
 base_link_goal_cost = croco.CostModelResidual(state, base_link_res)
@@ -82,7 +87,6 @@ terminal_model = croco.IntegratedActionModelEuler(terminal_dif_model, 0)
 
 
 ## Solve
-x0 = np.concatenate([q0, v0])
 problem = croco.ShootingProblem(x0, [running_model]*T, terminal_model)
 solver = croco.SolverFDDP(problem)
 solver.solve()

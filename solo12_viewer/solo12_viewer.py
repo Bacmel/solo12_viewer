@@ -28,7 +28,7 @@ from tf2_ros import TransformBroadcaster
 # ##CONSTANTS =========================================================
 # Defaults files
 yaml_file = '/home/aschroeter/devel/odri_control_interface/demos/config_solo12.yaml'
-trajectory_file = ''
+trajectory_file = '/home/aschroeter/solo12_ws/src/solo12_viewer/base_move.npy'
 
 # Physical constants
 dt = 1e-3 # in [s]
@@ -139,36 +139,45 @@ class Solo12Viewer(Node):
 
    # Customs functions -------------------------------------------------
 
+    def set_odri(self, q, v):
+        self.odri_robot.joints.set_maximum_current(8)
+        self.odri_robot.joints.set_desired_positions(q)
+        self.odri_robot.joints.set_desired_velocities(v)
+        self.odri_robot.joints.set_position_gains(np.full((len(q), 1), 6))
+        self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), 0.3))
+        self.odri_robot.joints.set_torques(np.full((len(q), 1), 0.5))
+        self.odri_robot.send_command_and_wait_end_of_cycle(dt)
+
     def setup(self):
         # Creation pinocchio
         self.pin_robot = example_robot_data.load('solo12')
-        nq = self.pin_robot.model.nq
-        q0 = zero(nq)
+        self.nq = self.pin_robot.model.nq
+        q0 = self.pin_robot.q0
         nv = self.pin_robot.model.nv
-        v0 = zero(nv)
-        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q0, v0)
+        v0 = self.pin_robot.v0
+        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q0)
         self.broadcast_tf()
 
         # Creation ODRI
         self.odri_robot = oci.robot_from_yaml_file(yaml_file)
-        self.odri_robot.initialize(q0)
-        q = self.odri_robot.joints.positions
-        self.odri_robot.joints.set_position_offsets(-q)
-        
+        self.odri_robot.initialize(q0[7:])
+
         # Get Trajectory
         self.Xs = np.load(trajectory_file)
-
-        input("Press Enter to launch the trajectory...")
+        self.t = 0
+        
+        #input("Press Enter to launch the trajectory...")
 
     def loop(self):
 
         # Get new configuration
         x_t = self.Xs[self.t]
+        
         q = x_t[:self.nq]
         v = x_t[self.nq:]
 
         # Collecting datas
-        #self.odri_robot.parse_sensor_data()
+        self.odri_robot.parse_sensor_data()
 
         # imu_attitude = self.odri_robot.imu.attitude_euler
         # positions = self.odri_robot.joints.positions
@@ -177,10 +186,12 @@ class Solo12Viewer(Node):
         # nq = self.pin_robot.model.nq
         # bound = np.full((nq, 1), np.pi)
         # q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
-        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q, v)
+        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
 
-        #if self.t < len(self.solver.xs)-1:
-        #    self.t = self.t+1
+        self.set_odri(q[7:], v[6:])
+
+        if self.t < len(self.Xs)-1:
+           self.t = self.t+1
 
         # Send data
         # self.publish_joint_state()
