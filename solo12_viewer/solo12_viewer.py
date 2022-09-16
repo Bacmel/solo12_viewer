@@ -5,48 +5,33 @@
 
 """Pinocchio publisher node."""
 
-
+# Exemple robot
+import example_robot_data
+# ODRI
+import libodri_control_interface_pywrap as oci
+# Pinocchio
+import pinocchio as pin
+# ROS
+import rclpy
+from geometry_msgs.msg import TransformStamped
+# Custom ROS messages
+from odri_msgs.msg import MotorState, RobotState
+from pinocchio.utils import *
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
 # ##MODULES ===========================================================
 # ROS messages
 from std_msgs.msg import Header
-from sensor_msgs.msg import JointState
-from geometry_msgs.msg import TransformStamped
-
-# Custom ROS messages
-from odri_msgs.msg import RobotState
-from odri_msgs.msg import MotorState
-
-# ROS
-import rclpy
-from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
-from tf2_ros import TransformListener 
-from tf2_ros import Buffer
 
-# Pinocchio
-import pinocchio as pin
-from pinocchio.utils import *
-from pinocchio.robot_wrapper import RobotWrapper
-
-# ODRI
-import libodri_control_interface_pywrap as oci
-
-# Crocoddyl
-import crocoddyl
-
-
+# 
 # ##CONSTANTS =========================================================
 # Defaults files
-urdf = '/opt/openrobots/share/example-robot-data/robots/solo_description/robots/solo12.urdf'
-yaml = '/home/aschroeter/devel/odri_control_interface/demos/config_solo12.yaml'
-
-# Goal frame
-frame_name = 'base_link'
-frame_goal = pin.SE3(np.eye(3), np.array([.05, .0, -0.1]))
+yaml_file = '/home/aschroeter/devel/odri_control_interface/demos/config_solo12.yaml'
+trajectory_file = ''
 
 # Physical constants
 dt = 1e-3 # in [s]
-T = 1000 # knots
 
 # ##CLASS ============================================================
 
@@ -59,14 +44,15 @@ class Solo12Viewer(Node):
         super().__init__('solo12_viewer')
         # Creation of the ROS publishers
         self._init_publisher()
-        # Creation of the ROS subscribers()
-        self._init_subscriber()
+        # Creation of the ROS broadcaster
+        self._init_broadcaster()
         # Creation of the ROS timer
         self.timer = self.create_timer(dt, self.loop)
         # Initialization for Aurel
         self.setup()
    
     def _getAngleValue(self, joint_id):
+        """Deprecated method."""
         joint_name = self.pin_robot.model.names[joint_id]
         previous_id = self.pin_robot.model.frames[self.pin_robot.model.getFrameId(joint_name)].previousFrame
         parent_id = self.pin_robot.model.frames[previous_id].parent
@@ -82,19 +68,15 @@ class Solo12Viewer(Node):
         return np.around(theta, decimals=2)
 
     def _init_publisher(self):
-        """Initialize the ROS broadcaster."""
-        # Data from pinocchio
-        self.pub_state = self.create_publisher(JointState, 'joint_states', 1)
-        self.pub_odri = self.create_publisher(RobotState, 'solo12_states', 1)
-        self.br_state = TransformBroadcaster(self)
+        """Initialize the ROS publisher."""
+        self.pub_joint_state = self.create_publisher(JointState, 'joint_states', 1)
+        self.pub_odri_data = self.create_publisher(RobotState, 'odri_data', 1)
 
-    def _init_subscriber(self):
-        """Initialize the ROS Listener"""
-        self.tf_buffer = Buffer()
-        self.li_state = TransformListener(self.tf_buffer, self)
+    def _init_broadcaster(self):
+        """Initialize the ROS broadcaster"""
+        self.br_tf = TransformBroadcaster(self)
 
-
-    def update_joint(self):
+    def publish_joint_state(self):
         """Update joints regarding Pinocchio"""
         msg_joint_state = JointState()
         msg_joint_state.header = Header()
@@ -106,9 +88,9 @@ class Solo12Viewer(Node):
                 msg_joint_state.position.append(self._getAngleValue(joint.id))
                 msg_joint_state.velocity.append(0)
                 msg_joint_state.effort.append(0)
-        self.pub_state.publish(msg_joint_state)
+        self.pub_joint_state.publish(msg_joint_state)
 
-    def update_frame(self):
+    def broadcast_tf(self):
         """Update frames regarding Pinocchio."""
         for frame in self.pin_robot.model.frames:
             t = TransformStamped()
@@ -136,9 +118,9 @@ class Solo12Viewer(Node):
             t.transform.rotation.z = q_z
             t.transform.rotation.w = q_w
 
-            self.br_state.sendTransform(t)
+            self.br_tf.sendTransform(t)
 
-    def publish_odri_state(self):
+    def publish_odri_data(self):
         """Publish odri state."""
         msg_robot_state = RobotState()
         positions = self.odri_robot.joints.positions.copy()
@@ -153,150 +135,57 @@ class Solo12Viewer(Node):
             motor_state.current = torques[i]
 
             msg_robot_state.motor_states.append(motor_state)
-        self.pub_odri.publish(msg_robot_state)
-    
-    def get_M_w_f(self, frame_name):
-        trans = None
-        succeed = False
-        while not succeed:
-            try:
-                now = rclpy.time.Time()
-                t = self.tf_buffer.lookup_transform(
-                'world_flu',
-                frame_name,
-                now)
-                succeed = True
-            except:
-                succeed = False
-        x   = t.transform.translation.x
-        y   = t.transform.translation.y
-        z   = t.transform.translation.z
-        q_x = t.transform.rotation.x
-        q_y = t.transform.rotation.y
-        q_z = t.transform.rotation.z
-        q_w = t.transform.rotation.w
-
-        M_w_f = pin.XYZToQUAT(x, y, z, q_x, q_y, q_z, q_w)
-        return M_w_f
+        self.pub_odri_data.publish(msg_robot_state)
 
    # Customs functions -------------------------------------------------
-    
-    def crocoddyl_setup(self):
-        # Creation state
-        state = crocoddyl.StateMultibody(self.pin_robot.model)
-
-        # Creation Cost
-        runningCM  = crocoddyl.CostModelSum(state)
-        terminalCM = crocoddyl.CostModelSum(state)
-
-        ## Command Cost
-        uRes = crocoddyl.ResidualModelControl(state)
-        uCost = crocoddyl.CostModelResidual(state, uRes)
-        runningCM.addCost('uReg', uCost, 1e-4)
-        
-        ## State Cost
-        xRes = crocoddyl.ResidualModelControl(state)
-        xCost = crocoddyl.CostModelResidual(state, xRes)
-        runningCM.addCost('xReg', xCost, 1e-4)
-        
-        
-        M_world_base_link = self.get_M_w_f('FL_FOOT')
-        
-        #
-        frameid = self.pin_robot.model.getFrameId('FL_FOOT')
-        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, M_world_base_link*np.array([0.1946, 0.14695, -0.2, 1]))
-        goalCost = crocoddyl.CostModelResidual(state, frameRes)
-        runningCM.addCost('FL_FOOT', goalCost, 1)
-        terminalCM.addCost('FL_FOOT', goalCost, 1)
-        
-        frameid = self.pin_robot.model.getFrameId('FR_FOOT')
-        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, M_world_base_link*np.array([0.1946, -0.14695, -0.2, 1]))
-        goalCost = crocoddyl.CostModelResidual(state, frameRes)
-        runningCM.addCost('FR_FOOT', goalCost, 1)
-        terminalCM.addCost('FR_FOOT', goalCost, 1)
-
-        frameid = self.pin_robot.model.getFrameId('HL_FOOT')
-        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, M_world_base_link*np.array([-0.1946, 0.14695, -0.2, 1]))
-        goalCost = crocoddyl.CostModelResidual(state, frameRes)
-        runningCM.addCost('HL_FOOT', goalCost, 1)
-        terminalCM.addCost('HL_FOOT', goalCost, 1)
-
-        frameid = self.pin_robot.model.getFrameId('HR_FOOT')
-        frameRes = crocoddyl.ResidualModelFrameTranslation(state, frameid, M_world_base_link*np.array([-0.1946, -0.14695, -0.2, 1]))
-        goalCost = crocoddyl.CostModelResidual(state, frameRes)
-        runningCM.addCost('HR_FOOT', goalCost, 1)
-        terminalCM.addCost('HR_FOOT', goalCost, 1)
-        
-        
-        
-        ## Goal Cost
-        #frameid = self.pin_robot.model.getFrameId(frame_name)
-        #frameRes = crocoddyl.ResidualModelFramePlacement(state, frameid, frame_goal)
-        #goalCost = crocoddyl.CostModelResidual(state, frameRes)
-        #runningCM.addCost(frame_name, goalCost, 1)
-        #terminalCM.addCost(frame_name, goalCost, 1)
-
-        # Creation Action Model
-        actuationM = crocoddyl.ActuationModelFull(state)
-        self.runningM = crocoddyl.IntegratedActionModelEuler(crocoddyl.DifferentialActionModelFreeFwdDynamics(state, actuationM, runningCM), dt)
-        self.runningM.differential.armature = np.full((self.nq, 1), 0.1)
-        
-        self.terminalM = crocoddyl.IntegratedActionModelEuler(crocoddyl.DifferentialActionModelFreeFwdDynamics(state, actuationM, terminalCM), 0.)
-        self.terminalM.differential.armature = np.full((self.nq, 1), 0.1)
 
     def setup(self):
-        # Creation of the 2 entities
-        self.pin_robot = RobotWrapper.BuildFromURDF(urdf)
-        self.odri_robot = oci.robot_from_yaml_file(yaml)
-        
-        # Initialization
-        self.nq = self.pin_robot.model.nq
-        q0 = zero(self.nq)
+        # Creation pinocchio
+        self.pin_robot = example_robot_data.load('solo12')
+        nq = self.pin_robot.model.nq
+        q0 = zero(nq)
         nv = self.pin_robot.model.nv
         v0 = zero(nv)
-        x0 = np.concatenate([q0, v0])
-        
-        ## Pinocchio
-        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q0)
-        self.update_frame()
-        
-        ## ODRI
+        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q0, v0)
+        self.broadcast_tf()
+
+        # Creation ODRI
+        self.odri_robot = oci.robot_from_yaml_file(yaml_file)
         self.odri_robot.initialize(q0)
         q = self.odri_robot.joints.positions
         self.odri_robot.joints.set_position_offsets(-q)
-	
-        ## Crocoddyl
-        self.crocoddyl_setup()
-        problem = crocoddyl.ShootingProblem(x0, [self.runningM]*T, self.terminalM)
-        self.solver = crocoddyl.SolverDDP(problem)
-        self.solver.solve()
-        self.t = 0
         
+        # Get Trajectory
+        self.Xs = np.load(trajectory_file)
+
+        input("Press Enter to launch the trajectory...")
+
     def loop(self):
+
         # Get new configuration
-        x_t = self.solver.xs[self.t]
+        x_t = self.Xs[self.t]
         q = x_t[:self.nq]
         v = x_t[self.nq:]
 
         # Collecting datas
-        self.odri_robot.parse_sensor_data()
+        #self.odri_robot.parse_sensor_data()
 
-        imu_attitude = self.odri_robot.imu.attitude_euler
-        positions = self.odri_robot.joints.positions
-        velocities = self.odri_robot.joints.velocities
+        # imu_attitude = self.odri_robot.imu.attitude_euler
+        # positions = self.odri_robot.joints.positions
+        # velocities = self.odri_robot.joints.velocities
 
-        #nq = self.pin_robot.model.nq
-        #bound = np.full((nq, 1), np.pi)
-        q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
-        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
+        # nq = self.pin_robot.model.nq
+        # bound = np.full((nq, 1), np.pi)
+        # q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
+        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q, v)
 
         #if self.t < len(self.solver.xs)-1:
         #    self.t = self.t+1
 
         # Send data
-        # self.update_joint()
-        self.update_frame()
-        self.publish_odri_state()
+        # self.publish_joint_state()
+        self.broadcast_tf()
+        # self.publish_odri_data()
 
 
 # ## MAIN ================================================================
