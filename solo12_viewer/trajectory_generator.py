@@ -1,27 +1,33 @@
-from tempfile import TemporaryFile
-
 import crocoddyl as croco
 import example_robot_data
 import numpy as np
 import pinocchio as pin
 
-# Initialize Pinocchio
-robot = example_robot_data.load('solo12')
-nq = robot.model.nq
-q0 = pin.zero(nq)
-nv = robot.model.nv
-v0 = pin.zero(nv)
-pin.framesForwardKinematics(robot.model, robot.data, q0, v0)
+## LISTS OF DATA
+feet_name_list = ['FL_FOOT', 'FR_FOOT', 'HL_FOOT', 'HR_FOOT']
+feet_pos_list = [np.array([0.1946, 0.14695, -0.2]),
+                 np.array([0.1946, -0.14695, -0.2]),
+                 np.array([-0.1946, 0.14695, -0.2]),
+                 np.array([-0.1946, -0.14695, -0.2])]
 
-############################################ YOU CAN CHANGE #################################################
-# Physical constants
+## Initialize Pinocchio
+robot = example_robot_data.load('solo12')
+nq = robot.nq
+q0 = robot.q0
+nv = robot.nv
+v0 = robot.v0
+pin.framesForwardKinematics(robot.model, robot.data, q0)
+
+## Physical constants
 dt = 1e-3 # in [s]
 T = 1000 # knots
 
-# Creation state
+## Creation state
 state = croco.StateMultibody(robot.model)
 
-# Creation Cost
+########################################## COST
+
+## Creation Cost
 running_cost_model  = croco.CostModelSum(state)
 terminal_cost_model = croco.CostModelSum(state)
 
@@ -30,35 +36,19 @@ u_res = croco.ResidualModelControl(state)
 u_cost = croco.CostModelResidual(state, u_res)
 running_cost_model.addCost('uReg', u_cost, 1e-4)
         
-## State Cost
+## State Regulation Cost
 x_res = croco.ResidualModelControl(state)
 x_cost = croco.CostModelResidual(state, x_res)
 running_cost_model.addCost('xReg', x_cost, 1e-4)
               
 ## Feet Goal Cost
-foot1_id  = robot.model.getFrameId('FL_FOOT')
-foot1_res = croco.ResidualModelFrameTranslation(state, foot1_id, np.array([0.1946, 0.14695, -0.2]))
-foot1_goal_cost = croco.CostModelResidual(state, foot1_res)
-running_cost_model.addCost('FL_FOOT', foot1_goal_cost, 1)
-terminal_cost_model.addCost('FL_FOOT', foot1_goal_cost, 1)
-
-foot2_id  = robot.model.getFrameId('FR_FOOT')
-foot2_res = croco.ResidualModelFrameTranslation(state, foot2_id, np.array([0.1946, -0.14695, -0.2]))
-foot2_goal_cost = croco.CostModelResidual(state, foot2_res)
-running_cost_model.addCost('FR_FOOT', foot2_goal_cost, 1)
-terminal_cost_model.addCost('FR_FOOT', foot2_goal_cost, 1)
-
-foot3_id  = robot.model.getFrameId('HL_FOOT')
-foot3_res = croco.ResidualModelFrameTranslation(state, foot3_id, np.array([-0.1946, 0.14695, -0.2, 1]))
-foot3_goal_cost = croco.CostModelResidual(state, foot3_res)
-running_cost_model.addCost('HL_FOOT', foot3_goal_cost, 1)
-terminal_cost_model.addCost('HL_FOOT', foot3_goal_cost, 1)
-
-foot4_id  = robot.model.getFrameId('HR_FOOT')
-foot4_res = croco.ResidualModelFrameTranslation(state, foot4_id, np.array([-0.1946, -0.14695, -0.2]))
-foot4_goal_cost = croco.CostModelResidual(state, foot4_res)
-running_cost_model.addCost('HR_FOOT', foot4_goal_cost, 1)
-terminal_cost_model.addCost('HR_FOOT', foot4_goal_cost, 1)
+# for idx, foot_name in enumerate(feet_name_list) :
+#    foot_id = robot.model.getFrameId(foot_name)
+#    foot_pos = feet_pos_list[idx]
+#    foot_res = croco.ResidualModelFrameTranslation(state, foot_id, foot_pos)
+#    foot_goal_cost = croco.CostModelResidual(state, foot_res)
+#    running_cost_model.addCost(foot_name, foot_goal_cost, 1)
+#    terminal_cost_model.addCost(foot_name, foot_goal_cost, 1)      
         
 ## Base Link Goal Cost
 frame_goal = pin.SE3(np.eye(3), np.array([.05, .0, -0.1]))
@@ -67,20 +57,35 @@ base_link_res = croco.ResidualModelFramePlacement(state, base_link_id, frame_goa
 base_link_goal_cost = croco.CostModelResidual(state, base_link_res)
 terminal_cost_model.addCost('base_link', base_link_goal_cost, 1)
 
-# Creation Action Model
+#################################################################################### CONTACT
+
+## Creation Contact
+contact_model = croco.ContactModelMultiple(state)
+
+## Feet Contact         
+for idx, foot_name in enumerate(feet_name_list) :
+    foot_id = robot.model.getFrameId(foot_name)
+    foot_pos = feet_pos_list[idx]
+    foot_contact = croco.ContactModel3D(state, foot_id, foot_pos)
+    contact_model.addContact(foot_name, foot_contact)
+
+#################################################################################### Action Model
+
+## Creation Action Model
 actuation_model = croco.ActuationModelFull(state)
-running_model = croco.IntegratedActionModelEuler(croco.DifferentialActionModelFreeFwdDynamics(state, actuation_model, running_cost_model), dt)
-running_model.differential.armature = np.full((nq, 1), 0.1)
-      
-terminal_model = croco.IntegratedActionModelEuler(croco.DifferentialActionModelFreeFwdDynamics(state, actuation_model, terminal_cost_model), 0.)
-terminal_model.differential.armature = np.full((nq, 1), 0.1)
+
+running_dif_model = croco.DifferentialActionModelContactFwdDynamics(state, actuation_model, contact_model, running_cost_model)
+running_model = croco.IntegratedActionModelEuler(running_dif_model, dt)
+
+terminal_dif_model = croco.DifferentialActionModelContactFwdDynamics(state, actuation_model, contact_model, terminal_cost_model)
+terminal_model = croco.IntegratedActionModelEuler(terminal_dif_model, 0)    
+
 
 ## Solve
-x0 = np.concatenate(q0, v0)
+x0 = np.concatenate([q0, v0])
 problem = croco.ShootingProblem(x0, [running_model]*T, terminal_model)
-solver = croco.SolverDDP(problem)
+solver = croco.SolverFDDP(problem)
 solver.solve()
 
 # Save the trajectory
-outfile = TemporaryFile()
-np.save(outfile, solver.xs)
+np.save('base_move.npy', solver.xs)
