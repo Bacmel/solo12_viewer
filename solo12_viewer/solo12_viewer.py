@@ -49,7 +49,7 @@ class Solo12Viewer(Node):
         # Creation of the ROS broadcaster
         self._init_broadcaster()
         # Creation of the ROS timer
-        self.timer = self.create_timer(self.dt, self.loop)
+        self.timer = self.create_timer(self.dt.value, self.loop)
         # Initialization for Aurel
         self.setup()
     
@@ -65,7 +65,7 @@ class Solo12Viewer(Node):
     def _init_publishers(self):
         """Initialize the ROS publishers."""
         self.pub_joint_state = self.create_publisher(JointState, 'joint_states', 1)
-        if self.is_odri_enabled:
+        if self.is_odri_enabled.value:
             self.pub_odri_data = self.create_publisher(RobotState, 'odri_data', 1)
 
     def _init_broadcaster(self):
@@ -118,7 +118,7 @@ class Solo12Viewer(Node):
 
     def publish_odri_data(self):
         """Publish odri state."""
-        if self.is_odri_enabled:
+        if self.is_odri_enabled.value:
             msg_robot_state = RobotState()
             positions = self.odri_robot.joints.positions.copy()
             velocities = self.odri_robot.joints.velocities.copy()
@@ -154,14 +154,14 @@ class Solo12Viewer(Node):
 
 
     def set_odri(self, q, v):
-        if self.is_odri_enabled:
+        if self.is_odri_enabled.value:
             self.odri_robot.joints.set_maximum_current(8)
             self.odri_robot.joints.set_desired_positions(q)
             self.odri_robot.joints.set_desired_velocities(v)
             self.odri_robot.joints.set_position_gains(np.full((len(q), 1), 6))
             self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), 0.3))
             self.odri_robot.joints.set_torques(np.full((len(q), 1), 0.5))
-            self.odri_robot.send_command_and_wait_end_of_cycle(dt)
+            self.odri_robot.send_command_and_wait_end_of_cycle(self.dt.value)
 
    # Customs functions -------------------------------------------------
 
@@ -176,12 +176,12 @@ class Solo12Viewer(Node):
         self.broadcast_tf()
 
         # Creation ODRI
-        if self.is_odri_enabled:
-            self.odri_robot = oci.robot_from_yaml_file(self.odri_config_file)
+        if self.is_odri_enabled.value:
+            self.odri_robot = oci.robot_from_yaml_file(self.odri_config_file.value)
             self.odri_robot.initialize(q0[7:])
 
         # Get Trajectory
-        self.Xs = np.load(self.trajectory_file)
+        self.Xs = np.load(self.trajectory_file.value)
         self.t = 0
         
     def loop(self):
@@ -192,7 +192,7 @@ class Solo12Viewer(Node):
         v = x_t[self.nq:]
 
         # Odri
-        if self.is_odri_enabled:
+        if self.is_odri_enabled.value:
             self.odri_robot.parse_sensor_data()
             self.set_odri(q[7:], v[6:])
             self.publish_odri_data()

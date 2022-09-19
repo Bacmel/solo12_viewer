@@ -35,8 +35,7 @@ def generate_launch_description():
     custom_node                = Node(package='solo12_viewer',
                                       executable='solo12_viewer',
                                       output='both',
-                                      parameters=[solo12_viewer_yaml_path]
-                                      )
+                                      parameters=[solo12_viewer_yaml_path])
 
     vrpn_client_node           = Node(package='vrpn_client_ros',
                                       executable='vrpn_client_node',
@@ -61,6 +60,7 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     ld.add_action(urdf_path_arg)
+    ld.add_action(solo12_viewer_yaml_path_arg)
     ld.add_action(robot_state_publisher_node)
     ld.add_action(rviz_node)
     ld.add_action(custom_node)
