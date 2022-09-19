@@ -3,6 +3,7 @@ from launch_ros.descriptions import ParameterValue
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration, Command
 
 from ament_index_python.packages import get_package_share_directory
@@ -13,13 +14,18 @@ import numpy as np
 default_urdf_path = os.path.join(get_package_share_directory('example-robot-data'), 'robots', 'solo_description', 'robots', 'solo12.urdf')
 default_solo12_viewer_yaml_path = os.path.join(get_package_share_directory('solo12_viewer'), 'config', 'solo12_viewer.yaml')
 
+default_debug_mode = 'false'
+
 def generate_launch_description():
     
-    urdf_path_arg = DeclareLaunchArgument('urdf_path', default_value=str(default_urdf_path), description="Path of the urdf file")
+    urdf_path_arg = DeclareLaunchArgument('urdf_path', default_value=str(default_urdf_path), description="Path of the urdf file.")
     urdf_path = LaunchConfiguration('urdf_path')
 
     solo12_viewer_yaml_path_arg = DeclareLaunchArgument('solo12_viewer_yaml_path', default_value=str(default_solo12_viewer_yaml_path), description="Path of the yaml file with solo12_viewer node parameters.")
     solo12_viewer_yaml_path = LaunchConfiguration('solo12_viewer_yaml_path')
+
+    debug_mode_arg = DeclareLaunchArgument('debug_mode', default_value=str(default_debug_mode), description="Boolean value the set the debug mode.")
+    debug_mode = LaunchConfiguration('debug_mode')
 
     robot_state_publisher_node = Node(package='robot_state_publisher',
                                       executable='robot_state_publisher',
@@ -30,7 +36,8 @@ def generate_launch_description():
     rviz_node                  = Node(package='rviz2',
                                       executable='rviz2',
                                       output='both',
-                                      arguments=['-d' + os.path.join(get_package_share_directory('solo12_viewer'), 'config', 'config.rviz')])
+                                      arguments=['-d' + os.path.join(get_package_share_directory('solo12_viewer'), 'config', 'config.rviz')],
+                                      condition=UnlessCondition(debug_mode))
     
     custom_node                = Node(package='solo12_viewer',
                                       executable='solo12_viewer',
@@ -62,6 +69,7 @@ def generate_launch_description():
 
     ld.add_action(urdf_path_arg)
     ld.add_action(solo12_viewer_yaml_path_arg)
+    ld.add_action(debug_mode_arg)
 
     ld.add_action(robot_state_publisher_node)
     ld.add_action(rviz_node)
