@@ -11,12 +11,15 @@ import os.path
 import numpy as np
 
 default_urdf_path = '/opt/openrobots/share/example-robot-data/robots/solo_description/robots/solo12.urdf'
+default_solo12_viewer_yaml_path = os.path.join(get_package_share_directory('solo12_viewer'), 'config', 'solo12_viewer.yaml')
 
 def generate_launch_description():
-    urdf_path_arg = DeclareLaunchArgument(
-        'urdf_path', default_value=str(default_urdf_path), description="Path of the urdf file")
-
+    
+    urdf_path_arg = DeclareLaunchArgument('urdf_path', default_value=str(default_urdf_path), description="Path of the urdf file")
     urdf_path = LaunchConfiguration('urdf_path')
+
+    solo12_viewer_yaml_path_arg = DeclareLaunchArgument('solo12_viewer_yaml_path', default_value=str(default_solo12_viewer_yaml_path), description="Path of the yaml file with solo12_viewer node parameters.")
+    solo12_viewer_yaml_path = LaunchConfiguration('solo12_viewer_yaml_path')
 
     robot_state_publisher_node = Node(package='robot_state_publisher',
                                       executable='robot_state_publisher',
@@ -31,7 +34,9 @@ def generate_launch_description():
     
     custom_node                = Node(package='solo12_viewer',
                                       executable='solo12_viewer',
-                                      output='both')
+                                      output='both',
+                                      parameters=[solo12_viewer_yaml_path]
+                                      )
 
     vrpn_client_node           = Node(package='vrpn_client_ros',
                                       executable='vrpn_client_node',

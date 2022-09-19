@@ -5,33 +5,33 @@
 
 """Pinocchio publisher node."""
 
+# ##MODULES ===========================================================
 # Exemple robot
 import example_robot_data
+
 # ODRI
 import libodri_control_interface_pywrap as oci
+
 # Pinocchio
 import pinocchio as pin
+from pinocchio.utils import *
+
 # ROS
 import rclpy
-from geometry_msgs.msg import TransformStamped
-# Custom ROS messages
-from odri_msgs.msg import MotorState, RobotState
-from pinocchio.utils import *
 from rclpy.node import Node
-from sensor_msgs.msg import JointState
-# ##MODULES ===========================================================
-# ROS messages
-from std_msgs.msg import Header
 from tf2_ros import TransformBroadcaster
 
-# 
-# ##CONSTANTS =========================================================
-# Defaults files
-yaml_file = '/home/aschroeter/devel/odri_control_interface/demos/config_solo12.yaml'
-trajectory_file = '/home/aschroeter/solo12_ws/src/solo12_viewer/base_move.npy'
+# ROS messages
+from geometry_msgs.msg import TransformStamped
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Header
 
+# Custom ROS messages
+from odri_msgs.msg import MotorState, RobotState
+
+# ##CONSTANTS =========================================================
 # Physical constants
-dt = 1e-3 # in [s]
+DEFAULT_DT = 1e-3 # in [s]
 
 # ##CLASS ============================================================
 
@@ -42,35 +42,31 @@ class Solo12Viewer(Node):
     def __init__(self):
         """Initialize the ROS node."""
         super().__init__('solo12_viewer')
+        # Creation of ROS parameters
+        self._init_parameters()
         # Creation of the ROS publishers
-        self._init_publisher()
+        self._init_publishers()
         # Creation of the ROS broadcaster
         self._init_broadcaster()
         # Creation of the ROS timer
-        self.timer = self.create_timer(dt, self.loop)
+        self.timer = self.create_timer(self.dt, self.loop)
         # Initialization for Aurel
         self.setup()
-   
-    def _getAngleValue(self, joint_id):
-        """Deprecated method."""
-        joint_name = self.pin_robot.model.names[joint_id]
-        previous_id = self.pin_robot.model.frames[self.pin_robot.model.getFrameId(joint_name)].previousFrame
-        parent_id = self.pin_robot.model.frames[previous_id].parent
-        joint_1_name = self.pin_robot.model.names[parent_id]
-        joint_1_id = self.pin_robot.index(joint_1_name)
-        Moj = self.pin_robot.data.oMi[joint_id]
-        Moj_1 = self.pin_robot.data.oMi[joint_1_id]
-        Mj_1_j = Moj_1.inverse()*Moj
-        quat = pin.Quaternion(Mj_1_j.rotation)
-        vec = quat.vec()
-        theta = 2*np.arctan2(np.linalg.norm(vec), quat.w)
-        theta = (theta + np.pi) % (2 * np.pi) - np.pi
-        return np.around(theta, decimals=2)
+    
+    def _init_parameters(self):
+        """Initialize the ROS parameters."""
+        # odri parameters
+        self.is_odri_enabled = self.declare_parameter('is_odri_enabled', False)
+        self.odri_config_file = self.declare_parameter('odri_config_file', '')
+        # trajectory parameters
+        self.dt = self.declare_parameter('dt', DEFAULT_DT)
+        self.trajectory_file = self.declare_parameter('trajectory_file', '')
 
-    def _init_publisher(self):
-        """Initialize the ROS publisher."""
+    def _init_publishers(self):
+        """Initialize the ROS publishers."""
         self.pub_joint_state = self.create_publisher(JointState, 'joint_states', 1)
-        self.pub_odri_data = self.create_publisher(RobotState, 'odri_data', 1)
+        if self.is_odri_enabled:
+            self.pub_odri_data = self.create_publisher(RobotState, 'odri_data', 1)
 
     def _init_broadcaster(self):
         """Initialize the ROS broadcaster"""
@@ -85,7 +81,7 @@ class Solo12Viewer(Node):
         for joint in self.pin_robot.model.joints:
             if joint.id < self.pin_robot.model.njoints:
                 msg_joint_state.name.append(self.pin_robot.model.names[joint.id])
-                msg_joint_state.position.append(self._getAngleValue(joint.id))
+                msg_joint_state.position.append(self.getAngleValue(joint.id))
                 msg_joint_state.velocity.append(0)
                 msg_joint_state.effort.append(0)
         self.pub_joint_state.publish(msg_joint_state)
@@ -122,31 +118,52 @@ class Solo12Viewer(Node):
 
     def publish_odri_data(self):
         """Publish odri state."""
-        msg_robot_state = RobotState()
-        positions = self.odri_robot.joints.positions.copy()
-        velocities = self.odri_robot.joints.velocities.copy()
-        torques = self.odri_robot.joints.measured_torques.copy()
+        if self.is_odri_enabled:
+            msg_robot_state = RobotState()
+            positions = self.odri_robot.joints.positions.copy()
+            velocities = self.odri_robot.joints.velocities.copy()
+            torques = self.odri_robot.joints.measured_torques.copy()
 
-        msg_robot_state.header.stamp = self.get_clock().now().to_msg()
-        for i, _ in enumerate(positions):
-            motor_state = MotorState()
-            motor_state.position = positions[i]
-            motor_state.velocity = velocities[i]
-            motor_state.current = torques[i]
+            msg_robot_state.header.stamp = self.get_clock().now().to_msg()
+            for i, _ in enumerate(positions):
+                motor_state = MotorState()
+                motor_state.position = positions[i]
+                motor_state.velocity = velocities[i]
+                motor_state.current = torques[i]
 
-            msg_robot_state.motor_states.append(motor_state)
-        self.pub_odri_data.publish(msg_robot_state)
+                msg_robot_state.motor_states.append(motor_state)
+            self.pub_odri_data.publish(msg_robot_state)
 
    # Customs functions -------------------------------------------------
 
+    def getAngleValue(self, joint_id):
+        """Deprecated method."""
+        joint_name = self.pin_robot.model.names[joint_id]
+        previous_id = self.pin_robot.model.frames[self.pin_robot.model.getFrameId(joint_name)].previousFrame
+        parent_id = self.pin_robot.model.frames[previous_id].parent
+        joint_1_name = self.pin_robot.model.names[parent_id]
+        joint_1_id = self.pin_robot.index(joint_1_name)
+        Moj = self.pin_robot.data.oMi[joint_id]
+        Moj_1 = self.pin_robot.data.oMi[joint_1_id]
+        Mj_1_j = Moj_1.inverse()*Moj
+        quat = pin.Quaternion(Mj_1_j.rotation)
+        vec = quat.vec()
+        theta = 2*np.arctan2(np.linalg.norm(vec), quat.w)
+        theta = (theta + np.pi) % (2 * np.pi) - np.pi
+        return np.around(theta, decimals=2)
+
+
     def set_odri(self, q, v):
-        self.odri_robot.joints.set_maximum_current(8)
-        self.odri_robot.joints.set_desired_positions(q)
-        self.odri_robot.joints.set_desired_velocities(v)
-        self.odri_robot.joints.set_position_gains(np.full((len(q), 1), 6))
-        self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), 0.3))
-        self.odri_robot.joints.set_torques(np.full((len(q), 1), 0.5))
-        self.odri_robot.send_command_and_wait_end_of_cycle(dt)
+        if self.is_odri_enabled:
+            self.odri_robot.joints.set_maximum_current(8)
+            self.odri_robot.joints.set_desired_positions(q)
+            self.odri_robot.joints.set_desired_velocities(v)
+            self.odri_robot.joints.set_position_gains(np.full((len(q), 1), 6))
+            self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), 0.3))
+            self.odri_robot.joints.set_torques(np.full((len(q), 1), 0.5))
+            self.odri_robot.send_command_and_wait_end_of_cycle(dt)
+
+   # Customs functions -------------------------------------------------
 
     def setup(self):
         # Creation pinocchio
@@ -159,44 +176,34 @@ class Solo12Viewer(Node):
         self.broadcast_tf()
 
         # Creation ODRI
-        self.odri_robot = oci.robot_from_yaml_file(yaml_file)
-        self.odri_robot.initialize(q0[7:])
+        if self.is_odri_enabled:
+            self.odri_robot = oci.robot_from_yaml_file(self.odri_config_file)
+            self.odri_robot.initialize(q0[7:])
 
         # Get Trajectory
-        self.Xs = np.load(trajectory_file)
+        self.Xs = np.load(self.trajectory_file)
         self.t = 0
         
-        #input("Press Enter to launch the trajectory...")
-
     def loop(self):
-
         # Get new configuration
         x_t = self.Xs[self.t]
         
         q = x_t[:self.nq]
         v = x_t[self.nq:]
 
-        # Collecting datas
-        self.odri_robot.parse_sensor_data()
+        # Odri
+        if self.is_odri_enabled:
+            self.odri_robot.parse_sensor_data()
+            self.set_odri(q[7:], v[6:])
+            self.publish_odri_data()
 
-        # imu_attitude = self.odri_robot.imu.attitude_euler
-        # positions = self.odri_robot.joints.positions
-        # velocities = self.odri_robot.joints.velocities
-
-        # nq = self.pin_robot.model.nq
-        # bound = np.full((nq, 1), np.pi)
-        # q = positions # pin.randomConfiguration(self.pin_robot.model, -bound, bound)
+        # Pinocchio
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
-
-        self.set_odri(q[7:], v[6:])
+        # self.publish_joint_state()
+        self.broadcast_tf()
 
         if self.t < len(self.Xs)-1:
            self.t = self.t+1
-
-        # Send data
-        # self.publish_joint_state()
-        self.broadcast_tf()
-        # self.publish_odri_data()
 
 
 # ## MAIN ================================================================
@@ -212,6 +219,4 @@ def main(args=None):
 
 if __name__ == '__main__':
    main()
-
-
 

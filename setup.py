@@ -13,7 +13,10 @@ setup(
         # Include all launch files.
         (os.path.join('share', package_name), glob('launch/*launch.[pxy][yma]*')),
         # Include all config files.
-        (os.path.join('share', package_name, 'config'), glob('config/*config.rviz'))
+        (os.path.join('share', package_name, 'config'), glob('config/*config.rviz')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        # Include all config files.
+        (os.path.join('share', package_name, 'ressource'), glob('ressource/*.npy'))
     ],
     install_requires=['setuptools'],
     zip_safe=True,
