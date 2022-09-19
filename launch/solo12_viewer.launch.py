@@ -10,7 +10,7 @@ from ament_index_python.packages import get_package_share_directory
 import os.path
 import numpy as np
 
-default_urdf_path = '/opt/openrobots/share/example-robot-data/robots/solo_description/robots/solo12.urdf'
+default_urdf_path = os.path.join(get_package_share_directory('example-robot-data'), 'robots', 'solo_description', 'robots', 'solo12.urdf')
 default_solo12_viewer_yaml_path = os.path.join(get_package_share_directory('solo12_viewer'), 'config', 'solo12_viewer.yaml')
 
 def generate_launch_description():
@@ -35,6 +35,7 @@ def generate_launch_description():
     custom_node                = Node(package='solo12_viewer',
                                       executable='solo12_viewer',
                                       output='both',
+                                      emulate_tty=True,
                                       parameters=[solo12_viewer_yaml_path])
 
     vrpn_client_node           = Node(package='vrpn_client_ros',
@@ -61,6 +62,7 @@ def generate_launch_description():
 
     ld.add_action(urdf_path_arg)
     ld.add_action(solo12_viewer_yaml_path_arg)
+
     ld.add_action(robot_state_publisher_node)
     ld.add_action(rviz_node)
     ld.add_action(custom_node)
