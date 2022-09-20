@@ -25,6 +25,8 @@ from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
+
+# ROS service
 from std_srvs.srv import SetBool
 
 # Custom ROS messages
@@ -78,7 +80,7 @@ class Solo12Viewer(Node):
 
     def _init_service(self):
         """Initialize the ROS service."""
-        self.srv_enable = self.create_service(SetBool, "enable_loop", self.enable_loop_callback)
+        self.srv_enable = self.create_service(SetBool, 'enable_loop', self.enable_loop_callback)
 
     def publish_joint_state(self):
         """Update joints regarding Pinocchio"""
