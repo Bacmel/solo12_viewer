@@ -10,7 +10,7 @@
 import example_robot_data
 
 # ODRI
-import libodri_control_interface_pywrap as ocii
+import libodri_control_interface_pywrap as oci
 
 # Pinocchio
 import pinocchio as pin
@@ -200,7 +200,9 @@ class Solo12Viewer(Node):
         if self.is_odri_enabled:
             self.odri_robot = oci.robot_from_yaml_file(self.odri_config_file)
             self.odri_robot.initialize(q0[7:])
-
+            self.odri_robot.parse_sensor_data()
+            self.publish_odri_data()
+        
         # Get Trajectory
         self.Xs = np.load(self.trajectory_file)
         self.t = 0
@@ -209,26 +211,25 @@ class Solo12Viewer(Node):
         self.loop_enabled = False
         
     def loop(self):
-        if self.loop_enabled:
-            # Get new configuration
-            x_t = self.Xs[self.t]
+        # Get new configuration
+        x_t = self.Xs[self.t]
             
-            q = x_t[:self.nq]
-            v = x_t[self.nq:]
+        q = x_t[:self.nq]
+        v = x_t[self.nq:]
 
-            # Odri
-            if self.is_odri_enabled:
-                self.odri_robot.parse_sensor_data()
-                self.set_odri(q[7:], v[6:])
-                self.publish_odri_data()
+        # Odri
+        if self.is_odri_enabled:
+            self.odri_robot.parse_sensor_data()
+            self.set_odri(q[7:], v[6:])
+            self.publish_odri_data()
 
-            # Pinocchio
-            pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
-            # self.publish_joint_state()
-            self.broadcast_tf()
+        # Pinocchio
+        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q)
+        # self.publish_joint_state()
+        self.broadcast_tf()
 
-            if self.t < len(self.Xs)-1:
-               self.t = self.t+1
+        if self.t < len(self.Xs)-1 and self.loop_enabled:
+           self.t = self.t+1
 
 
 # ## MAIN ================================================================
