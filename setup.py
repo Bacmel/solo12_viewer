@@ -1,5 +1,6 @@
 import os
 from glob import glob
+
 from setuptools import setup
 
 package_name = 'solo12_viewer'
@@ -16,7 +17,7 @@ setup(
         (os.path.join('share', package_name, 'config'), glob('config/*config.rviz')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         # Include all config files.
-        (os.path.join('share', package_name, 'ressource'), glob('ressource/*.npy'))
+        (os.path.join('share', package_name, 'ressource'), glob('ressource/*.np[y][z]'))
     ],
     install_requires=['setuptools'],
     zip_safe=True,

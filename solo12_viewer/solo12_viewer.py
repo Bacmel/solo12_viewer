@@ -8,30 +8,23 @@
 # ##MODULES ===========================================================
 # Exemple robot
 import example_robot_data
-
 # ODRI
 import libodri_control_interface_pywrap as oci
-
 # Pinocchio
 import pinocchio as pin
-from pinocchio.utils import *
-
 # ROS
 import rclpy
-from rclpy.node import Node
-from tf2_ros import TransformBroadcaster
-
 # ROS messages
 from geometry_msgs.msg import TransformStamped
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Header
-
-# ROS service
-from std_srvs.srv import SetBool
-
 # Custom ROS messages
 from odri_msgs.msg import MotorState, RobotState
-
+from pinocchio.utils import *
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Header
+# ROS service
+from std_srvs.srv import SetBool
+from tf2_ros import TransformBroadcaster
 
 # ##CONSTANTS =========================================================
 # Physical constants
@@ -174,14 +167,13 @@ class Solo12Viewer(Node):
         return np.around(theta, decimals=2)
 
 
-    def set_odri(self, q, v):
+    def set_odri(self, q, v, t, kp, kd):
         if self.is_odri_enabled:
-            self.odri_robot.joints.set_maximum_current(8)
             self.odri_robot.joints.set_desired_positions(q)
             self.odri_robot.joints.set_desired_velocities(v)
-            self.odri_robot.joints.set_position_gains(np.full((len(q), 1), 6))
-            self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), 0.3))
-            self.odri_robot.joints.set_torques(np.full((len(q), 1), 0.5))
+            self.odri_robot.joints.set_torques(t)
+            self.odri_robot.joints.set_position_gains(np.full((len(q), 1), kp))
+            self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), kd))
             self.odri_robot.send_command_and_wait_end_of_cycle(self.dt)
 
    # Core functions -------------------------------------------------
@@ -204,7 +196,9 @@ class Solo12Viewer(Node):
             self.publish_odri_data()
         
         # Get Trajectory
-        self.Xs = np.load(self.trajectory_file)
+        S = np.load(self.trajectory_file)
+        self.Xs = S['xs']
+        self.Us = S['us']
         self.t = 0
 
         # Start
@@ -213,14 +207,19 @@ class Solo12Viewer(Node):
     def loop(self):
         # Get new configuration
         x_t = self.Xs[self.t]
+        if self.t == 0:
+            u_t_1 = zero(18,1)
+        else:
+            u_t_1 = self.Us[self.t-1]
             
         q = x_t[:self.nq]
         v = x_t[self.nq:]
+        t = u_t_1
 
         # Odri
         if self.is_odri_enabled:
             self.odri_robot.parse_sensor_data()
-            self.set_odri(q[7:], v[6:])
+            self.set_odri(q[7:], v[6:], t[6:], 6, 0.3)
             self.publish_odri_data()
 
         # Pinocchio
