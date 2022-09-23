@@ -179,21 +179,20 @@ class Solo12Viewer(Node):
    # Core functions -------------------------------------------------
 
     def setup(self):
+        odri_q0 = np.array([0.0, 0.7, -1.4,
+                      -0.0, 0.7, -1.4,
+                       0.0, -0.7, 1.4,
+                      -0.0, -0.7, 1.4])
+   
         # Creation pinocchio
         self.pin_robot = example_robot_data.load('solo12')
-        self.nq = self.pin_robot.model.nq
-        q0 = self.pin_robot.q0
-        nv = self.pin_robot.model.nv
-        v0 = self.pin_robot.v0
-        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, q0)
-        self.broadcast_tf()
+        pin_q0 = self.pin_robot.q0
+        pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, pin_q0)
 
         # Creation ODRI
         if self.is_odri_enabled:
             self.odri_robot = oci.robot_from_yaml_file(self.odri_config_file)
-            self.odri_robot.initialize(q0[7:])
-            self.odri_robot.parse_sensor_data()
-            self.publish_odri_data()
+            self.odri_robot.initialize(odri_q0)
         
         # Get Trajectory
         S = np.load(self.trajectory_file)
@@ -211,7 +210,7 @@ class Solo12Viewer(Node):
         if self.t == 0:
             u_t_1 = np.zeros(12)
         else:
-            u_t_1 = self.Us[int(self.t-1)]
+            u_t_1 = self.Us[self.t-1]
             
         q = x_t[:self.nq]
         v = x_t[self.nq:]
