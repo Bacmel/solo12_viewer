@@ -92,4 +92,4 @@ solver = croco.SolverFDDP(problem)
 solver.solve()
 
 # Save the trajectory
-np.save('base_move.npy', solver.xs)
+np.savez('base_move', xs=solver.xs, us=solver.us)

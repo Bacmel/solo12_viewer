@@ -2,6 +2,6 @@ solo12_viewer:
   ros__parameters:
     is_odri_enabled: true
     odri_config_file: '/home/aschroeter/devel/odri_control_interface/demos/config_solo12.yaml'
-    trajectory_file: '/home/aschroeter/solo12_ws/src/solo12_viewer/ressource/jump_move.npy'
-    dt: 0.001
+    trajectory_file: '/home/aschroeter/solo12_ws/src/solo12_viewer/ressource/jump_move.npz'
+    dt: 0.01
 

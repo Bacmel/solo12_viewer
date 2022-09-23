@@ -207,10 +207,11 @@ class Solo12Viewer(Node):
     def loop(self):
         # Get new configuration
         x_t = self.Xs[self.t]
+        # print(self.t)
         if self.t == 0:
-            u_t_1 = zero(18,1)
+            u_t_1 = np.zeros(12)
         else:
-            u_t_1 = self.Us[self.t-1]
+            u_t_1 = self.Us[int(self.t-1)]
             
         q = x_t[:self.nq]
         v = x_t[self.nq:]
@@ -219,7 +220,7 @@ class Solo12Viewer(Node):
         # Odri
         if self.is_odri_enabled:
             self.odri_robot.parse_sensor_data()
-            self.set_odri(q[7:], v[6:], t[6:], 6, 0.3)
+            self.set_odri(q[7:], v[6:], t, 6, 0.3)
             self.publish_odri_data()
 
         # Pinocchio
