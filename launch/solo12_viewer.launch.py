@@ -29,20 +29,19 @@ def generate_launch_description():
 
     robot_state_publisher_node = Node(package='robot_state_publisher',
                                       executable='robot_state_publisher',
-                                      output='both',
+                                      output='log',
                                       parameters=[{'robot_description': ParameterValue(Command(['cat ',urdf_path]), value_type=str)}],
                                       arguments=[urdf_path])
 
     rviz_node                  = Node(package='rviz2',
                                       executable='rviz2',
-                                      output='both',
+                                      output='log',
                                       arguments=['-d' + os.path.join(get_package_share_directory('solo12_viewer'), 'config', 'config.rviz')],
                                       condition=UnlessCondition(debug_mode))
     
     custom_node                = Node(package='solo12_viewer',
                                       executable='solo12_viewer',
                                       output='both',
-                                      emulate_tty=True,
                                       parameters=[solo12_viewer_yaml_path])
 
     vrpn_client_node           = Node(package='vrpn_client_ros',
