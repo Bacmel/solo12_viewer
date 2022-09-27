@@ -17,17 +17,23 @@ feet_pos_list = [np.array([0.1946, 0.14695, 0.0]),
 
 ################################################################ Global variables
 robot = example_robot_data.load('solo12')
-robot.model.effortLimit[6:] = np.ones(12) * 1.5
+robot.model.effortLimit[6:] = np.ones(12) * 2.0
 nq = robot.nq
 q0 = robot.q0
 nv = robot.nv
 v0 = robot.v0
-x0 = np.concatenate([q0, v0])
 
 q_start = np.array([
-    0., 0., 0.235, 0., 0., 0., 1., 0.1, 1.2, -2.4, -0.1, 1.2, -2.4, 0.1, -1.2,
-    2.4, -0.1, -1.2, 2.4
-])
+                    0.0, 0.0, 0.24,
+                    0.0, 0.0, 0.0, 1.0,
+                    0.0, 0.7, -1.4,
+                    0.0, 0.7, -1.4,
+                    0.0, -0.7, 1.4,
+                    0.0, -0.7, 1.4])
+
+#q0 = q_start
+
+x0 = np.concatenate([q0, v0])
 
 pin.framesForwardKinematics(robot.model, robot.data, q0)
 
@@ -140,7 +146,7 @@ actions_model = actions_model + [action_2_model]*action_2_T
 
 
 ###################################################################################### Action 3 Flying
-action_3_T = int(0.20/dt)
+action_3_T = int(0.30/dt)
 
 ## COSTS
 action_3_cost_model  = croco.CostModelSum(state, actuation.nu)
@@ -208,7 +214,7 @@ action_terminal_cost_model  = croco.CostModelSum(state, actuation.nu)
 action_terminal_cost_model.addCost('uReg', u_contact_cost, 1e-4)
 action_terminal_cost_model.addCost('xReg', x_cost, 1e-0)
 # terminal position
-terminal_goal = np.array([0, 0, 0.50])
+terminal_goal = np.array([0, 0, 0.60])
 base_link_pos_res = croco.ResidualModelFrameTranslation(state, base_link_id, terminal_goal, actuation.nu)
 base_link_pos_goal_cost = croco.CostModelResidual(state, base_link_pos_res)
 action_terminal_cost_model.addCost('base_link translation', base_link_pos_goal_cost, 1e4)

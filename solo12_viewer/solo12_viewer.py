@@ -28,7 +28,7 @@ from tf2_ros import TransformBroadcaster
 
 # ##CONSTANTS =========================================================
 # Physical constants
-DEFAULT_DT = 1e-3 # in [s]
+DEFAULT_DT = 10e-3 # in [s]
 
 # ##CLASS ============================================================
 
@@ -174,7 +174,9 @@ class Solo12Viewer(Node):
             self.odri_robot.joints.set_torques(t)
             self.odri_robot.joints.set_position_gains(np.full((len(q), 1), kp))
             self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), kd))
-            self.odri_robot.send_command_and_wait_end_of_cycle(self.dt)
+            self.odri_robot.joints.set_maximum_current(15)
+            if self.odri_robot.send_command():
+                self.odri_robot.has_error
 
    # Core functions -------------------------------------------------
 
@@ -186,6 +188,7 @@ class Solo12Viewer(Node):
    
         # Creation pinocchio
         self.pin_robot = example_robot_data.load('solo12')
+        self.nq = self.pin_robot.nq
         pin_q0 = self.pin_robot.q0
         pin.framesForwardKinematics(self.pin_robot.model, self.pin_robot.data, pin_q0)
 
@@ -202,11 +205,12 @@ class Solo12Viewer(Node):
 
         # Start
         self.loop_enabled = False
+        self.Kp = 6
+        self.Kv = 0.3
         
     def loop(self):
         # Get new configuration
         x_t = self.Xs[self.t]
-        # print(self.t)
         if self.t == 0:
             u_t_1 = np.zeros(12)
         else:
@@ -219,7 +223,7 @@ class Solo12Viewer(Node):
         # Odri
         if self.is_odri_enabled:
             self.odri_robot.parse_sensor_data()
-            self.set_odri(q[7:], v[6:], t, 6, 0.3)
+            self.set_odri(q[7:], v[6:], t, 5, 0.3) #self.Kp, self.Kv) # pos vel torque Kp Kv
             self.publish_odri_data()
 
         # Pinocchio
@@ -227,8 +231,13 @@ class Solo12Viewer(Node):
         # self.publish_joint_state()
         self.broadcast_tf()
 
-        if self.t < len(self.Xs)-1 and self.loop_enabled:
-           self.t = self.t+1
+        if self.loop_enabled:
+            if self.t < len(self.Xs)-1:
+                self.t = self.t+1
+            else:
+                pass
+                #self.Kp = 6
+                #self.Kv = 0.3
 
 
 # ## MAIN ================================================================
