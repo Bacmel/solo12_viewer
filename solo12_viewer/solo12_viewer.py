@@ -174,7 +174,7 @@ class Solo12Viewer(Node):
             self.odri_robot.joints.set_torques(t)
             self.odri_robot.joints.set_position_gains(np.full((len(q), 1), kp))
             self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), kd))
-            self.odri_robot.joints.set_maximum_current(15)
+            self.odri_robot.joints.set_maximum_current(16)
             if self.odri_robot.send_command():
                 self.odri_robot.has_error
 
@@ -206,7 +206,7 @@ class Solo12Viewer(Node):
         # Start
         self.loop_enabled = False
         self.Kp = 6
-        self.Kv = 0.3
+        self.Kd = 0.3
         
     def loop(self):
         # Get new configuration
@@ -223,7 +223,7 @@ class Solo12Viewer(Node):
         # Odri
         if self.is_odri_enabled:
             self.odri_robot.parse_sensor_data()
-            self.set_odri(q[7:], v[6:], t, 5, 0.3) #self.Kp, self.Kv) # pos vel torque Kp Kv
+            self.set_odri(q[7:], v[6:], t, self.Kp, self.Kd) # pos vel torque Kp Kd
             self.publish_odri_data()
 
         # Pinocchio
@@ -237,7 +237,7 @@ class Solo12Viewer(Node):
             else:
                 pass
                 #self.Kp = 6
-                #self.Kv = 0.3
+                #self.Kd = 0.3
 
 
 # ## MAIN ================================================================
