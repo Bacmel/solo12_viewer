@@ -73,7 +73,7 @@ def generate_launch_description():
     ld.add_action(robot_state_publisher_node)
     ld.add_action(rviz_node)
     ld.add_action(custom_node)
-    ld.add_action(vrpn_client_node)
+    #ld.add_action(vrpn_client_node)
 
     ld.add_action(st_w_wo)
     ld.add_action(st_solo12_fur_flu)
