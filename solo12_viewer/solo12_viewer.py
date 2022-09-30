@@ -174,7 +174,7 @@ class Solo12Viewer(Node):
             self.odri_robot.joints.set_torques(t)
             self.odri_robot.joints.set_position_gains(np.full((len(q), 1), kp))
             self.odri_robot.joints.set_velocity_gains(np.full((len(v), 1), kd))
-            self.odri_robot.joints.set_maximum_current(16)
+            self.odri_robot.joints.set_maximum_current(7)
             if self.odri_robot.send_command():
                 self.odri_robot.has_error
 
@@ -185,7 +185,14 @@ class Solo12Viewer(Node):
                       -0.0, 0.7, -1.4,
                        0.0, -0.7, 1.4,
                       -0.0, -0.7, 1.4])
-   
+
+        q_start = np.array([0.0, -2.2, 2.4,
+                            0.0, -2.2, 2.4,
+                            0.0, 2.2, -2.4,
+                            0.0, 2.2, -2.4])
+        odri_q0=q_start
+
+
         # Creation pinocchio
         self.pin_robot = example_robot_data.load('solo12')
         self.nq = self.pin_robot.nq
@@ -211,14 +218,15 @@ class Solo12Viewer(Node):
     def loop(self):
         # Get new configuration
         x_t = self.Xs[self.t]
-        if self.t == 0:
-            u_t_1 = np.zeros(12)
-        else:
-            u_t_1 = self.Us[self.t-1]
-            
         q = x_t[:self.nq]
         v = x_t[self.nq:]
-        t = u_t_1
+
+        # H2 : for STATE x[t] needs COMMAND u[t]
+        if self.t >= len(self.Xs)-1:
+            u_t = np.zeros(12)
+        else:
+            u_t = self.Us[self.t]            
+        t = u_t
 
         # Odri
         if self.is_odri_enabled:
@@ -234,10 +242,14 @@ class Solo12Viewer(Node):
         if self.loop_enabled:
             if self.t < len(self.Xs)-1:
                 self.t = self.t+1
-            else:
-                pass
                 #self.Kp = 6
                 #self.Kd = 0.3
+            else:
+                #pass
+                #self.loop_enabled = False
+                #self.t = 0
+                self.Kp = 5
+                self.Kd = 0.3
 
 
 # ## MAIN ================================================================
